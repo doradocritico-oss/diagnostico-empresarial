@@ -130,17 +130,58 @@ textarea{min-height:105px;resize:vertical}.opts{display:grid;gap:9px}.opt{border
     <div class="card"><div class="section">Resumen</div><div id="summary" class="summary"></div>
       <div class="nav"><button class="btn prev" onclick="downloadJSON()">Descargar respuestas</button><button class="btn next" onclick="location.reload()">Nuevo diagnóstico</button></div>
     </div>
-    <p class="small">Nota: esta versión es un prototipo local. Para recibir respuestas automáticamente desde clientes, el siguiente paso es conectarlo a una base de datos o servicio de formularios.</p>
+    <p class="small">El diagnóstico fue enviado al sistema de recepción. Las respuestas quedan registradas para su posterior análisis.</p>
   </div>
 </div>
 <script>
+const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwmBuQvyV6_kzxNCP2F7jy4hP_9T-mXym674EwMjCq5cfPnxqXPt4hoIfPLoz0VEjs31g/exec";
 const steps=[...document.querySelectorAll('.step')];let current=0;const bar=document.getElementById('bar');const form=document.getElementById('form');let data={};
 function show(){steps.forEach((s,i)=>s.classList.toggle('hidden',i!==current));bar.style.width=((current+1)/steps.length*100)+'%';document.getElementById('stepLabel').textContent='Sección '+(current+1)+' de '+steps.length;window.scrollTo({top:0,behavior:'smooth'});document.querySelectorAll('.prev').forEach(b=>b.style.visibility=current===0?'hidden':'visible')}
 function validate(){const fields=[...steps[current].querySelectorAll('input,textarea,select')].filter(x=>x.required);for(const f of fields){if(f.type==='radio'){const group=steps[current].querySelectorAll(`input[name="${f.name}"]`);if(![...group].some(x=>x.checked)){return false}}else if(!f.value.trim())return false}return true}
 function next(){if(!validate()){alert('Completa las preguntas de esta sección antes de continuar.');return}if(current<steps.length-1){current++;show()}}
 function prev(){if(current>0){current--;show()}}
 function collect(){data={};new FormData(form).forEach((v,k)=>data[k]=v)}
-form.addEventListener('submit',e=>{e.preventDefault();if(!validate()){document.getElementById('error').textContent='Completa los campos pendientes antes de finalizar.';return}collect();localStorage.setItem('diagnosticoGestion',JSON.stringify({fecha:new Date().toISOString(),respuestas:data}));let txt='Diagnóstico de Gestión, Contabilidad y Automatización\\n\\n';Object.entries(data).forEach(([k,v])=>txt+=k+': '+v+'\\n');document.getElementById('summary').textContent=txt;form.classList.add('hidden');document.querySelector('.progress').classList.add('hidden');document.getElementById('done').classList.remove('hidden');window.scrollTo({top:0,behavior:'smooth'})});
+form.addEventListener('submit', async e=>{
+  e.preventDefault();
+  if(!validate()){
+    document.getElementById('error').textContent='Completa los campos pendientes antes de finalizar.';
+    return;
+  }
+
+  collect();
+  const submitBtn = form.querySelector('.submit');
+  submitBtn.disabled = true;
+  submitBtn.textContent = 'Enviando...';
+  document.getElementById('error').textContent = '';
+
+  try {
+    const body = new URLSearchParams(data);
+    await fetch(APPS_SCRIPT_URL, {
+      method: 'POST',
+      mode: 'no-cors',
+      headers: {'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8'},
+      body: body.toString()
+    });
+
+    localStorage.setItem('diagnosticoGestion',JSON.stringify({
+      fecha:new Date().toISOString(),
+      respuestas:data
+    }));
+
+    let txt='Diagnóstico de Gestión, Contabilidad y Automatización\\n\\n';
+    Object.entries(data).forEach(([k,v])=>txt+=k+': '+v+'\\n');
+    document.getElementById('summary').textContent=txt;
+    form.classList.add('hidden');
+    document.querySelector('.progress').classList.add('hidden');
+    document.getElementById('done').classList.remove('hidden');
+    window.scrollTo({top:0,behavior:'smooth'});
+  } catch (err) {
+    submitBtn.disabled = false;
+    submitBtn.textContent = 'Finalizar diagnóstico';
+    document.getElementById('error').textContent =
+      'No fue posible enviar el diagnóstico. Intenta nuevamente.';
+  }
+});
 function downloadJSON(){const blob=new Blob([JSON.stringify({fecha:new Date().toISOString(),respuestas:data},null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='diagnostico-gestion.json';a.click();URL.revokeObjectURL(a.href)}
 show();
 </script>
